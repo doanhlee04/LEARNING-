@@ -1,0 +1,100 @@
+# Dataset Preparation
+import torch
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+
+# Image transformations (resizing, normalization)
+transform = transforms.Compose([
+    transforms.Resize((299, 299)),  # Inception expects 299x299 images
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet normalization
+])
+
+# Load the dataset (replace with your dataset)
+train_dataset = datasets.ImageFolder('path_to_train_data', transform=transform)
+test_dataset = datasets.ImageFolder('path_to_test_data', transform=transform)
+
+# DataLoader for batch processing
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+# Load the Pre-trained InceptionNet
+from torchvision import models
+
+# Load pre-trained Inception v3 model
+inception = models.inception_v3(pretrained=True)
+
+# Freeze all layers except the final layer
+for param in inception.parameters():
+    param.requires_grad = False
+
+# Modify the final layer to match the number of classes in your dataset
+num_classes = 3  # Example: 3 classes for brain tumor classification
+inception.fc = torch.nn.Linear(inception.fc.in_features, num_classes)
+
+# Set Loss Function and Optimizer
+import torch.optim as optim
+import torch.nn as nn
+
+# Loss function and optimizer
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(inception.fc.parameters(), lr=0.001)
+
+# Training loops
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+inception = inception.to(device)
+
+num_epochs = 10  # Set the number of training epochs
+
+# Training loop
+for epoch in range(num_epochs):
+    inception.train()  # Set the model to training mode
+    running_loss = 0.0
+    
+    for inputs, labels in train_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+
+        # Zero the parameter gradients
+        optimizer.zero_grad()
+
+        # Forward pass
+        outputs = inception(inputs)
+        loss = criterion(outputs, labels)
+
+        # Backward pass and optimization
+        loss.backward()
+        optimizer.step()
+
+        running_loss += loss.item()
+
+    print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {running_loss / len(train_loader)}")
+
+
+# Evaluate model
+
+# Evaluation mode (turn off dropout, batch norm)
+inception.eval()
+
+correct = 0
+total = 0
+
+with torch.no_grad():  # No need to compute gradients during evaluation
+    for inputs, labels in test_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+        outputs = inception(inputs)
+        _, predicted = torch.max(outputs, 1)  # Get the class with the highest score
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+
+print(f"Test Accuracy: {100 * correct / total}%")
+
+# Visualizing results
+import matplotlib.pyplot as plt
+
+# Assuming you've collected loss values over epochs
+plt.plot(range(num_epochs), training_loss)
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.title('Training Loss over Time')
+plt.show()
+
